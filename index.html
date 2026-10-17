@@ -273,6 +273,23 @@
       .lb-count { left: 50%; transform: translateX(-50%); }
     }
 
+    /* ============ 加载指示器 ============ */
+    #loading {
+      position: fixed; inset: 0; z-index: 9;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+      background: var(--bg-deep);
+      transition: opacity 400ms var(--ease-out);
+    }
+    #loading.done { opacity: 0; pointer-events: none; }
+    .loading-spinner {
+      width: 42px; height: 42px; border-radius: 50%;
+      border: 3px solid rgba(255,140,66,.15); border-top-color: var(--accent);
+      animation: loading-spin 900ms linear infinite;
+    }
+    .loading-text { font-family: var(--font-mono); font-size: 12px; letter-spacing: .1em; color: var(--ink-3); }
+    @keyframes loading-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .loading-spinner { animation-duration: 2400ms; } }
+
     /* ============ hover 仅限精确指针 ============ */
     @media (hover: hover) and (pointer: fine) {
       .chip:hover { background: rgba(9,13,24,.66); border-color: rgba(255,140,66,.45); transform: translateY(-1px); }
@@ -357,10 +374,20 @@
     <div id="lb-count" class="lb-count" aria-live="polite"></div>
   </div>
 
+  <div id="loading" aria-hidden="true">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">正在加载美食地图…</div>
+  </div>
+
   <script src="libs/three.min.js"></script>
   <script src="libs/globe.gl.min.js"></script>
-  <script src="img/earth-blue-marble.js"></script>
-  <script src="img/earth-dark.js"></script>
+  <script>
+    // file:// 双击打开时贴图须 base64 内嵌（绕跨域）；https 走直链 jpg，首屏省 ~500KB
+    if (location.protocol === 'file:') {
+      document.write('<script src="img/earth-blue-marble.js"><\/script>');
+      document.write('<script src="img/earth-dark.js"><\/script>');
+    }
+  </script>
   <script src="data.js"></script>
   <script src="app.js"></script>
 </body>

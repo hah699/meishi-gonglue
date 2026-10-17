@@ -1,6 +1,7 @@
 /* 美食攻略 — 主逻辑
  * 数据来源：
- *   img/earth-blue-marble.js / img/earth-dark.js : EARTH_BLUE / EARTH_DARK（地球贴图，base64 内嵌，file:// 双击可打开）
+ *   img/earth-blue-marble.js / img/earth-dark.js : EARTH_BLUE / EARTH_DARK（base64 内嵌贴图，
+ *     仅 file:// 双击打开时由 index.html 条件加载；https 环境直链 img/*.jpg，省 500KB+ 首屏流量）
  *   data.js           : RESTAURANTS（我的美食攻略）
  */
 (function () {
@@ -8,6 +9,11 @@
 
   // 减弱动效偏好（P0：命中时停自转、关涟漪、飞行时长归零）
   const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // 贴图源：file:// 用 base64 全局变量绕跨域；http(s) 直链 jpg（dark 贴图在切换主题时才下载）
+  const IS_FILE = location.protocol === 'file:';
+  const EARTH_BLUE_SRC = IS_FILE ? window.EARTH_BLUE : 'img/earth-blue-marble.jpg';
+  const EARTH_DARK_SRC = IS_FILE ? window.EARTH_DARK : 'img/earth-dark.jpg';
 
   const container = document.getElementById('globe');
 
@@ -53,7 +59,7 @@
     .backgroundColor('rgba(0,0,0,0)')
     .showAtmosphere(true)
     .atmosphereColor('#5f9bff')
-    .globeImageUrl(EARTH_BLUE)
+    .globeImageUrl(EARTH_BLUE_SRC)
 
     // 城市点：脉冲涟漪提示
     .ringsData(REDUCED ? [] : CITIES)
@@ -73,7 +79,14 @@
     .htmlTransitionDuration(0)
     .htmlElement(buildLabel)
 
-    .onGlobeReady(initLabelPositions);
+    .onGlobeReady(() => { initLabelPositions(); hideLoading(); });
+
+  // —— 加载指示器：贴图就绪即淡出，10s 兜底防卡死 ——
+  const loadingEl = document.getElementById('loading');
+  function hideLoading() {
+    if (loadingEl) loadingEl.classList.add('done');
+  }
+  setTimeout(hideLoading, 10000);
 
   world(container);
   resize();
@@ -411,7 +424,7 @@
   let dark = false;
   themeBtn.addEventListener('click', () => {
     dark = !dark;
-    world.globeImageUrl(dark ? EARTH_DARK : EARTH_BLUE);
+    world.globeImageUrl(dark ? EARTH_DARK_SRC : EARTH_BLUE_SRC);
     themeBtnText.textContent = dark ? '明亮版' : '深色版';
     themeBtn.dataset.state = dark ? 'dark' : 'light';
     themeBtn.setAttribute('aria-pressed', String(dark));
