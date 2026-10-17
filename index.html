@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="一个会旋转的 3D 地球工作台：标注你去过的餐厅，逐级下钻到城市街道，查看照片与评价。">
+  <title>美食攻略 · 我的美食地图</title>
+  <style>
+    /* ============ 设计令牌 ·「星空美食志」============ */
+    :root {
+      --bg-deep: #05070f; --bg-mid: #0a1020; --bg-glow: #101a33;
+      --ink-1: #f2f0ea; --ink-2: rgba(242,240,234,.62); --ink-3: rgba(242,240,234,.36);
+      --accent: #ff8c42; --accent-hi: #ffa561; --accent-dim: rgba(255,140,66,.14); --accent-on: #160a02;
+      --glass-bg: rgba(9,13,24,.58); --glass-bg-2: rgba(9,13,24,.78);
+      --glass-border: rgba(255,255,255,.10); --glass-hi: rgba(255,255,255,.06);
+      --glass-blur: 14px; --glass-blur-2: 22px;
+      --rule: rgba(242,240,234,.14);
+      --font-serif: Georgia,"Times New Roman","Songti SC","STSong","SimSun","Noto Serif SC",serif;
+      --font-sans: system-ui,"PingFang SC","Microsoft YaHei UI","Segoe UI",sans-serif;
+      --font-mono: ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+      --dur-micro: 120ms; --dur-hover: 150ms; --dur-fade: 200ms; --dur-panel: 350ms;
+      --ease-out: cubic-bezier(.22,1,.36,1);
+      --ease-press: cubic-bezier(.4,0,.2,1);
+      --ease-enter: cubic-bezier(.32,.72,0,1);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: var(--font-sans);
+      background: radial-gradient(circle at 50% 42%, var(--bg-glow) 0%, var(--bg-mid) 55%, var(--bg-deep) 100%);
+      color: var(--ink-1);
+      overflow: hidden;
+    }
+
+    #globe { position: fixed; inset: 0; z-index: 1; }
+
+    :focus { outline: none; }
+    .marker-inner:focus-visible, .chip:focus-visible, .panel-close:focus-visible, .thumb:focus-visible {
+      outline: 2px solid #ff8c42; outline-offset: 2px;
+    }
+    .lb-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+    /* ============ 刊头 ============ */
+    .header { position: fixed; top: 32px; left: 36px; z-index: 2; pointer-events: none; max-width: min(620px, 74vw); }
+    .kicker {
+      display: flex; align-items: center; gap: 10px;
+      font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+      letter-spacing: .18em; text-transform: uppercase; color: var(--ink-3);
+    }
+    .kicker::before { content: ""; width: 32px; height: 1px; background: var(--accent); }
+    .header h1 {
+      margin: 10px 0 0;
+      font-family: var(--font-serif); font-weight: 700;
+      font-size: clamp(34px, 4.5vw, 54px); line-height: 1.05; letter-spacing: .02em;
+      color: var(--ink-1); text-shadow: 0 1px 10px rgba(3,5,10,.65);
+    }
+    .subtitle {
+      margin: 12px 0 0; font-family: var(--font-mono); font-size: 12px; color: var(--ink-2);
+      font-variant-numeric: tabular-nums;
+    }
+    .subtitle b {
+      font-family: var(--font-serif); font-style: italic; font-weight: 400;
+      font-size: 28px; line-height: 1; color: var(--accent); padding: 0 2px;
+      font-variant-numeric: tabular-nums;
+    }
+    .guide { margin: 8px 0 0; font-size: 13px; color: #9fb0d8; }
+    .header::after { content: ""; display: block; margin-top: 8px; width: 100%; height: 1px; background: var(--rule); }
+
+    /* ============ 主题按钮 ============ */
+    .topbar { position: fixed; top: 32px; right: 36px; z-index: 2; display: flex; gap: 10px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 8px;
+      pointer-events: auto; cursor: pointer;
+      background: var(--glass-bg); color: var(--ink-1);
+      border: 1px solid var(--glass-border); border-radius: 999px;
+      padding: 8px 16px; font-family: var(--font-sans); font-size: 13px;
+      backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+      transition: background var(--dur-hover) var(--ease-out),
+                  border-color var(--dur-hover) var(--ease-out),
+                  transform var(--dur-hover) var(--ease-out);
+    }
+    .chip-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); transition: background var(--dur-micro) var(--ease-out), box-shadow var(--dur-micro) var(--ease-out); }
+    .chip[data-state="dark"] .chip-dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+
+    /* ============ 底部提示 ============ */
+    .hint {
+      position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+      z-index: 2; pointer-events: none; white-space: nowrap;
+      font-family: var(--font-mono); font-size: 11px; color: var(--ink-3);
+      background: rgba(5,7,15,.5); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      padding: 6px 16px; border-radius: 999px;
+    }
+    .hint .hint-short { display: none; }
+    @media (min-width: 480px) and (max-width: 767px) {
+      .hint .hint-full { display: none; }
+      .hint .hint-short { display: inline; }
+    }
+    @media (max-width: 479px) { .hint { display: none; } }
+
+    /* ============ 装饰字 ATLAS ============ */
+    .atlas-deco {
+      position: fixed; left: 36px; bottom: 40px; z-index: 1; pointer-events: none;
+      font-family: Georgia, serif; font-weight: 700;
+      font-size: clamp(120px, 18vw, 220px); line-height: 1; letter-spacing: .04em;
+      color: rgba(242,240,234,.05); user-select: none;
+    }
+    @supports (-webkit-text-stroke: 1px black) {
+      .atlas-deco { -webkit-text-stroke: 1px rgba(242,240,234,.16); color: transparent; }
+    }
+    @media (max-width: 899px) { .atlas-deco { display: none; } }
+
+    /* ============ 地球标记 ============ */
+    .label-wrap { position: absolute; pointer-events: none; }
+    .marker-inner {
+      position: relative;
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 13px 5px 8px;
+      background: rgba(7,10,19,.82);
+      border: 1px solid rgba(242,240,234,.22);
+      border-radius: 999px; white-space: nowrap;
+      color: var(--ink-1); font-family: var(--font-sans); font-size: 13px;
+      pointer-events: auto; cursor: pointer;
+      transition: transform var(--dur-hover) var(--ease-out), border-color var(--dur-hover) var(--ease-out);
+    }
+    .marker-inner .name { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+    .marker-inner .dot {
+      width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto;
+      background: var(--accent);
+      box-shadow: 0 0 0 3px rgba(255,140,66,.22), 0 0 10px var(--accent);
+    }
+    .marker-inner .count {
+      min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--accent); color: var(--accent-on);
+      font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ============ 高德 2D 街道地图层 ============ */
+    #amap-view {
+      position: fixed; inset: 0; z-index: 2;
+      background: var(--bg-deep);
+    }
+    #amap-view[hidden] { display: none; }
+    #amap-map { width: 100%; height: 100%; }
+    .amap-back {
+      position: fixed; top: 32px; left: 36px; z-index: 3; pointer-events: auto;
+    }
+    .amap-dot {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 3px rgba(255,140,66,.25), 0 0 12px var(--accent);
+    }
+    .amap-pin {
+      display: flex; align-items: center; gap: 5px;
+      background: rgba(7,10,19,.85);
+      border: 1px solid rgba(242,240,234,.22);
+      border-radius: 999px;
+      padding: 4px 10px 4px 5px;
+      white-space: nowrap; pointer-events: auto;
+      color: var(--ink-1); font-family: var(--font-sans); font-size: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.45);
+    }
+    .amap-pin .amap-dot { flex: 0 0 auto; }
+    .amap-pin-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+    .amap-cluster-bubble {
+      width: 32px; height: 32px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--accent); color: #fff;
+      font-family: var(--font-mono); font-size: 13px; font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      box-shadow: 0 0 0 4px rgba(255,140,66,.28), 0 2px 10px rgba(0,0,0,.45);
+    }
+
+    /* ============ 详情面板 ============ */
+    .panel {
+      position: fixed; top: 0; right: 0; z-index: 3;
+      width: 400px; max-width: 100vw; height: 100vh;
+      background: var(--glass-bg-2);
+      backdrop-filter: blur(var(--glass-blur-2)) saturate(1.25);
+      -webkit-backdrop-filter: blur(var(--glass-blur-2)) saturate(1.25);
+      border-left: 1px solid var(--glass-border);
+      transform: translateX(100%);
+      transition: transform var(--dur-panel) var(--ease-enter);
+      padding: 36px 32px; overflow-y: auto;
+    }
+    .panel.open { transform: translateX(0); }
+    .panel::-webkit-scrollbar { width: 6px; }
+    .panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 3px; }
+    .panel::-webkit-scrollbar-track { background: transparent; }
+
+    .panel-close {
+      position: absolute; top: 20px; right: 20px;
+      width: 40px; height: 40px; border-radius: 6px;
+      background: var(--glass-hi); border: 1px solid var(--glass-border);
+      color: var(--ink-2); font-size: 15px; cursor: pointer;
+      transition: background var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out);
+    }
+
+    .p-label {
+      font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+      letter-spacing: .18em; text-transform: uppercase; color: var(--accent);
+    }
+    .p-rule { height: 1px; background: var(--rule); margin-top: 12px; }
+    .p-title {
+      margin: 20px 44px 0 0;
+      font-family: var(--font-serif); font-weight: 700;
+      font-size: 26px; line-height: 1.25; color: var(--ink-1);
+    }
+    .p-meta { margin-top: 10px; font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+    .p-review {
+      margin-top: 20px; font-family: var(--font-sans);
+      font-size: 14.5px; line-height: 1.8; color: rgba(242,240,234,.88);
+      white-space: pre-wrap;
+    }
+    .p-review.empty { color: var(--ink-3); }
+
+    .photos { margin-top: 20px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .thumb {
+      width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 6px;
+      cursor: zoom-in; border: 1px solid var(--glass-border);
+      background: var(--glass-hi); display: block;
+      transition: transform var(--dur-hover) var(--ease-out), border-color var(--dur-hover) var(--ease-out);
+    }
+    .thumb-broken {
+      aspect-ratio: 1 / 1; border: 1px dashed var(--rule); border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--ink-3); font-family: var(--font-mono); font-size: 11px;
+    }
+    .photos-empty {
+      margin-top: 20px; padding: 24px; text-align: center;
+      color: var(--ink-3); font-family: var(--font-mono); font-size: 11px;
+      border: 1px dashed var(--rule); border-radius: 10px;
+    }
+    .photos-note { margin-top: 12px; font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+    /* ============ 灯箱 ============ */
+    .lightbox {
+      position: fixed; inset: 0; z-index: 4; display: none;
+      background: rgba(3,5,10,.94);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      align-items: center; justify-content: center;
+    }
+    .lightbox.open { display: flex; }
+    .lb-img {
+      max-width: 86vw; max-height: 84vh; border-radius: 6px;
+      box-shadow: 0 24px 80px rgba(0,0,0,.75);
+      border: 1px solid rgba(255,255,255,.08);
+      opacity: 1; transform: scale(1);
+      transition: opacity var(--dur-fade) var(--ease-out), transform 250ms var(--ease-out);
+    }
+    .lb-img.is-out { opacity: 0; transition-duration: var(--dur-micro), 250ms; }
+    .lb-img.is-enter { opacity: 0; transform: scale(.96); }
+    .lb-count {
+      position: absolute; left: 28px; bottom: 24px;
+      font-family: var(--font-mono); font-size: 11px; color: var(--ink-2);
+      font-variant-numeric: tabular-nums;
+    }
+    .lb-count b { color: var(--accent); font-weight: 400; }
+    .lb-btn {
+      position: absolute; background: rgba(255,255,255,.07); color: var(--ink-1);
+      border: none; width: 48px; height: 48px; border-radius: 6px;
+      font-size: 22px; line-height: 1; cursor: pointer;
+      transition: background var(--dur-hover) var(--ease-out);
+    }
+    .lb-close { top: 22px; right: 26px; font-size: 18px; }
+    .lb-prev { left: 22px; top: 50%; transform: translateY(-50%); }
+    .lb-next { right: 22px; top: 50%; transform: translateY(-50%); }
+    @media (max-width: 639px) {
+      .lb-prev { left: 16px; top: auto; bottom: 20px; transform: none; }
+      .lb-next { right: 16px; top: auto; bottom: 20px; transform: none; }
+      .lb-count { left: 50%; transform: translateX(-50%); }
+    }
+
+    /* ============ hover 仅限精确指针 ============ */
+    @media (hover: hover) and (pointer: fine) {
+      .chip:hover { background: rgba(9,13,24,.66); border-color: rgba(255,140,66,.45); transform: translateY(-1px); }
+      .marker-inner:hover { transform: scale(1.06); border-color: var(--accent); z-index: 10; }
+      .panel-close:hover { background: rgba(255,255,255,.12); color: var(--ink-1); }
+      .thumb:hover { transform: scale(1.02); border-color: var(--accent); }
+      .lb-btn:hover { background: rgba(255,255,255,.14); }
+    }
+
+    /* ============ 响应式面板 ============ */
+    @media (min-width: 768px) and (max-width: 1023px) {
+      .panel { width: min(400px, 46vw); }
+    }
+    @media (max-width: 767px) {
+      .header { top: 24px; left: 24px; max-width: calc(100vw - 48px); }
+      .topbar { top: 24px; right: 24px; }
+      .panel {
+        top: auto; bottom: 0; left: 0; right: 0;
+        width: 100%; height: 72vh;
+        border-left: none; border-top: 1px solid var(--glass-border);
+        border-radius: 12px 12px 0 0;
+        transform: translateY(100%);
+        padding: 30px 24px 36px;
+      }
+      .panel.open { transform: translateY(0); }
+      .panel::before {
+        content: ""; position: absolute; top: 8px; left: 50%;
+        transform: translateX(-50%);
+        width: 36px; height: 4px; border-radius: 2px; background: var(--glass-border);
+      }
+    }
+
+    /* ============ 降级与减弱动效 ============ */
+    @supports not (backdrop-filter: blur(1px)) {
+      .panel { background: rgba(13,18,33,.97); }
+      .lightbox { background: rgba(4,6,12,.97); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        transition-duration: 1ms !important;
+        animation: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="globe"></div>
+
+  <div id="amap-view" hidden>
+    <div id="amap-map"></div>
+    <button id="amap-back" class="chip amap-back" title="返回地球">← 返回地球</button>
+  </div>
+
+  <header class="header">
+    <div class="kicker">Food Atlas · Vol.01</div>
+    <h1>我的美食攻略</h1>
+    <p class="subtitle">已收录 <b id="count">0</b> 家餐厅<span id="subtitle-tail"> · 点击城市标记进入街道地图</span></p>
+    <p class="guide" id="guide" hidden>还没有美食记录——在 data.js 里添加第一家餐厅，地图会为你点亮它。</p>
+  </header>
+
+  <div class="topbar">
+    <button id="theme-btn" class="chip" data-state="light" aria-pressed="false"><span class="chip-dot"></span><span id="theme-btn-text">深色版</span></button>
+  </div>
+
+  <div class="hint">
+    <span class="hint-full">拖动旋转地球 · 滚轮缩放 · 点击橙色标记查看详情</span>
+    <span class="hint-short">拖动旋转 · 点标记看详情</span>
+  </div>
+
+  <div class="atlas-deco" aria-hidden="true">ATLAS</div>
+
+  <aside id="panel" class="panel" role="dialog" aria-modal="false" aria-label="美食详情">
+    <button id="panel-close" class="panel-close" title="关闭" aria-label="关闭详情面板">✕</button>
+    <div id="panel-body" class="panel-body"></div>
+  </aside>
+
+  <div id="lightbox" class="lightbox" role="dialog" aria-modal="true" aria-label="照片查看器">
+    <button id="lb-close" class="lb-btn lb-close" title="关闭" aria-label="关闭照片查看器">✕</button>
+    <button id="lb-prev" class="lb-btn lb-prev" title="上一张" aria-label="上一张照片">‹</button>
+    <img id="lb-img" class="lb-img" alt="照片">
+    <button id="lb-next" class="lb-btn lb-next" title="下一张" aria-label="下一张照片">›</button>
+    <div id="lb-count" class="lb-count" aria-live="polite"></div>
+  </div>
+
+  <script src="libs/three.min.js"></script>
+  <script src="libs/globe.gl.min.js"></script>
+  <script src="img/earth-blue-marble.js"></script>
+  <script src="img/earth-dark.js"></script>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
